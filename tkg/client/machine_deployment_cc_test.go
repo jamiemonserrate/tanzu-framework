@@ -425,6 +425,7 @@ var _ = Describe("SetMachineDeploymentCC", func() {
 
 	JustBeforeEach(func() {
 		err = DoSetMachineDeploymentCC(regionalClusterClient, &cluster, &options)
+		Expect(err).ToNot(HaveOccurred())
 	})
 
 	Context("adding a new MachineDeployment", func() {

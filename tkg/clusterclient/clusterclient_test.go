@@ -130,6 +130,7 @@ var _ = Describe("Cluster Client", func() {
 		currentNamespace       string
 		clientset              *fakes.CRTClusterClient
 		discoveryClient        *fakes.DiscoveryClient
+		featureFlagClient      *fakes.FakeFeatureGateHelper
 		err                    error
 		poller                 *fakes.Poller
 		kubeconfigbytes        []byte
@@ -161,6 +162,7 @@ var _ = Describe("Cluster Client", func() {
 		crtClientFactory.NewClientReturns(clientset, nil)
 		discoveryClientFactory = &fakes.DiscoveryClientFactory{}
 		discoveryClientFactory.NewDiscoveryClientForConfigReturns(discoveryClient, nil)
+		featureFlagClient = &fakes.FakeFeatureGateHelper{}
 		poller.PollImmediateWithGetterCalls(func(interval, timeout time.Duration, getterFunc GetterFunc) (interface{}, error) {
 			return getterFunc()
 		})
@@ -1611,6 +1613,14 @@ var _ = Describe("Cluster Client", func() {
 
 		Context("When all replicas are upgraded and all worker machines has new k8s version", func() {
 			It("should not return an error", func() {
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Context("When no replicas of worker machines exists", func() {
+			It("should not return an error", func() {
+				mdReplicas = Replicas{SpecReplica: 0, Replicas: 0, ReadyReplicas: 0, UpdatedReplicas: 0}
+				featureFlagClient.FeatureActivatedInNamespaceReturns(true, nil)
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})

@@ -70,6 +70,7 @@ import (
 	runv1alpha1 "github.com/vmware-tanzu/tanzu-framework/apis/run/v1alpha1"
 	runv1alpha3 "github.com/vmware-tanzu/tanzu-framework/apis/run/v1alpha3"
 	capdiscovery "github.com/vmware-tanzu/tanzu-framework/capabilities/client/pkg/discovery"
+	"github.com/vmware-tanzu/tanzu-framework/cli/runtime/config"
 	tmcv1alpha1 "github.com/vmware-tanzu/tanzu-framework/tkg/api/tmc/v1alpha1"
 	azureclient "github.com/vmware-tanzu/tanzu-framework/tkg/azure"
 	"github.com/vmware-tanzu/tanzu-framework/tkg/buildinfo"
@@ -773,6 +774,9 @@ func verifyKubernetesUpgradeForWorkerNodes(clusterStatusInfo *ClusterStatusInfo,
 	}
 
 	var desiredReplica int32 = 1
+	if config.IsFeatureActivated(config.FeatureFlagSingleNodeClusters) {
+		desiredReplica = 0
+	}
 	errList := []error{}
 
 	for i := range clusterStatusInfo.MDObjects {

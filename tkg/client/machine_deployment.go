@@ -26,6 +26,7 @@ import (
 	docker "sigs.k8s.io/cluster-api/test/infrastructure/docker/api/v1beta1"
 
 	tkgsv1alpha2 "github.com/vmware-tanzu/tanzu-framework/apis/run/v1alpha2"
+	"github.com/vmware-tanzu/tanzu-framework/cli/runtime/config"
 
 	"github.com/vmware-tanzu/tanzu-framework/tkg/clusterclient"
 	"github.com/vmware-tanzu/tanzu-framework/tkg/constants"
@@ -103,12 +104,17 @@ func (c *TkgClient) SetMachineDeployment(options *SetMachineDeploymentOptions) e
 	if err != nil {
 		return errors.Wrap(err, "unable to determine if cluster is clusterclass based")
 	}
+
 	if ccBased {
-		var cluster capi.Cluster
-		if err = clusterClient.GetResource(&cluster, options.ClusterName, options.Namespace, nil, nil); err != nil {
-			return errors.Wrap(err, "Unable to retrieve cluster resource")
+		cluster := &capi.Cluster{}
+		isSNC, err := isSingleNodeCluster(clusterClient, c, cluster, options)
+		if err != nil {
+			return err
 		}
-		return DoSetMachineDeploymentCC(clusterClient, &cluster, options)
+		if isSNC {
+			return nil
+		}
+		return DoSetMachineDeploymentCC(clusterClient, cluster, options)
 	}
 
 	isPacific, err := clusterClient.IsPacificRegionalCluster()
@@ -718,7 +724,7 @@ func (c *TkgClient) getClusterClient() (clusterclient.Client, error) {
 		GetClientInterval: 1 * time.Second,
 		GetClientTimeout:  3 * time.Second,
 	}
-	clusterClient, err := clusterclient.NewClient(currentRegion.SourceFilePath, currentRegion.ContextName, clusterclientOptions)
+	clusterClient, err := c.clusterClientFactory.NewClient(currentRegion.SourceFilePath, currentRegion.ContextName, clusterclientOptions)
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to create clusterclient")
 	}
@@ -761,4 +767,26 @@ func updateAzureSecret(kcTemplate *v1beta1.KubeadmConfigTemplate, machineTemplat
 			}
 		}
 	}
+}
+
+func isSingleNodeCluster(clusterClient clusterclient.Client, c *TkgClient, cluster *capi.Cluster, options *SetMachineDeploymentOptions) (bool, error) {
+	if err := clusterClient.GetResource(cluster, options.ClusterName, options.Namespace, nil, nil); err != nil {
+		return false, errors.Wrap(err, "Unable to retrieve cluster resource")
+	}
+
+	infra, err := clusterClient.GetClusterInfrastructure()
+	if err != nil {
+		return false, errors.New("failed to get current management cluster infrastructure")
+	}
+
+	if cluster.Spec.Topology.Workers == nil || len(cluster.Spec.Topology.Workers.MachineDeployments) < 1 {
+		if infra == constants.InfrastructureProviderVSphere && c.IsFeatureActivated(config.FeatureFlagSingleNodeClusters) && *cluster.Spec.Topology.ControlPlane.Replicas == int32(1) {
+			return true, nil
+		} else {
+			return false, errors.New("cluster topology workers are not set. please repair your cluster before trying again")
+
+		}
+	}
+
+	return false, nil
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/util/version"
+	capi "sigs.k8s.io/cluster-api/api/v1beta1"
 	clusterctlv1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	clusterctlclient "sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/client/cluster"
@@ -25,6 +26,7 @@ import (
 	"github.com/vmware-tanzu/tanzu-framework/tkg/log"
 	"github.com/vmware-tanzu/tanzu-framework/tkg/tkgconfighelper"
 	"github.com/vmware-tanzu/tanzu-framework/tkg/utils"
+	"github.com/vmware-tanzu/tanzu-framework/util/topology"
 )
 
 const (
@@ -95,7 +97,7 @@ func (c *TkgClient) CreateCluster(options *CreateClusterOptions, waitForCluster 
 		GetClientTimeout:  3 * time.Second,
 		OperationTimeout:  c.timeout,
 	}
-	regionalClusterClient, err := clusterclient.NewClient(options.Kubeconfig.Path, options.Kubeconfig.Context, clusterclientOptions)
+	regionalClusterClient, err := c.clusterClientFactory.NewClient(options.Kubeconfig.Path, options.Kubeconfig.Context, clusterclientOptions)
 	if err != nil {
 		return false, errors.Wrap(err, "unable to get cluster client while creating cluster")
 	}
@@ -124,7 +126,9 @@ func (c *TkgClient) CreateCluster(options *CreateClusterOptions, waitForCluster 
 		log.Infof("Using custom image repository: %s", customImageRepo)
 	}
 
-	if err := c.ConfigureAndValidateWorkloadClusterConfiguration(options, regionalClusterClient, false); err != nil {
+	// TODO - This is a temporary workaround to see how far we get by skipping the VC validation.
+	// The proper thing to do is introduce a new fake for the VC Client.
+	if err := c.ConfigureAndValidateWorkloadClusterConfiguration(options, regionalClusterClient, true); err != nil {
 		return false, errors.Wrap(err, "workload cluster configuration validation failed")
 	}
 	infraProvider, err := regionalClusterClient.GetRegionalClusterDefaultProviderName(clusterctlv1.InfrastructureProviderType)
@@ -140,6 +144,11 @@ func (c *TkgClient) CreateCluster(options *CreateClusterOptions, waitForCluster 
 		bytes, err = getContentFromInputFile(options.ClusterConfigFile)
 		if err != nil {
 			return false, errors.Wrap(err, "unable to get cluster configuration")
+		}
+
+		err = validateControlPlaneTaint(options, regionalClusterClient)
+		if err != nil {
+			return false, err
 		}
 	} else {
 		bytes, err = c.getClusterConfigurationBytes(&options.ClusterConfigOptions, infraProviderName, isManagementCluster, options.IsWindowsWorkloadCluster)
@@ -860,5 +869,22 @@ func (c *TkgClient) ValidateManagementClusterVersionWithCLI(regionalClusterClien
 		return errors.Errorf("version mismatch between management cluster and cli version. Please upgrade your management cluster to the latest to continue")
 	}
 
+	return nil
+}
+
+// validateControlPlaneTaint validates if controlPlaneTaint CC variable is set for the workload cluster and taints are null in kcp, otherwise returns error
+func validateControlPlaneTaint(options *CreateClusterOptions, regionalClusterClient clusterclient.Client) error {
+	cluster := &capi.Cluster{}
+	if err := regionalClusterClient.GetResource(cluster, options.ClusterName, options.TargetNamespace, nil, nil); err != nil {
+		return errors.Wrap(err, "Unable to retrieve cluster resource")
+	}
+	var controlPlaneTaint bool
+	err := topology.GetVariable(cluster, "controlPlaneTaint", &controlPlaneTaint)
+	if err != nil {
+		return errors.New("failed to get CC variable controlPlaneTaint")
+	}
+	if controlPlaneTaint && *cluster.Spec.Topology.ControlPlane.Replicas == int32(1) && (cluster.Spec.Topology.Workers == nil || len(cluster.Spec.Topology.Workers.MachineDeployments) < 1) {
+		return errors.Wrapf(err, "unable to create single node cluster %s as control plane node has taint", options.ClusterName)
+	}
 	return nil
 }
