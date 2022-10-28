@@ -7,6 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"gopkg.in/yaml.v3"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
@@ -121,6 +122,8 @@ var _ = Describe("CreateCluster", func() {
 		tkgConfigUpdaterClient      *fakes.TKGConfigUpdaterClient
 		tkgConfigReaderWriter       *fakes.TKGConfigReaderWriter
 		tkgConfigReaderWriterClient *fakes.TKGConfigReaderWriterClient
+		vcClientFactory             *fakes.VcClientFactory
+		vcClient                    *fakes.VCClient
 	)
 	BeforeEach(func() {
 		clusterClientFactory = &fakes.ClusterClientFactory{}
@@ -131,8 +134,11 @@ var _ = Describe("CreateCluster", func() {
 		tkgConfigUpdaterClient = &fakes.TKGConfigUpdaterClient{}
 		tkgConfigReaderWriterClient = &fakes.TKGConfigReaderWriterClient{}
 		tkgConfigReaderWriter = &fakes.TKGConfigReaderWriter{}
+		vcClientFactory = &fakes.VcClientFactory{}
+		vcClient = &fakes.VCClient{}
 
 		tkgConfigReaderWriterClient.TKGConfigReaderWriterReturns(tkgConfigReaderWriter)
+		vcClientFactory.NewClientReturns(vcClient, nil)
 
 		tkgClient, err = CreateTKGClientOptsMutator(configFile2, testingDir, "../fakes/config/bom/tkg-bom-v1.3.1.yaml", 2*time.Second, func(o Options) Options {
 			o.ClusterClientFactory = clusterClientFactory
@@ -176,6 +182,14 @@ var _ = Describe("CreateCluster", func() {
 				return nil
 			})
 
+			tkgBomConfigData := `
+ova: []
+`
+
+			tkgBomConfig := &tkgconfigbom.BOMConfiguration{}
+			err = yaml.Unmarshal([]byte(tkgBomConfigData), tkgBomConfig)
+			Expect(err).NotTo(HaveOccurred())
+
 			clusterClient.GetManagementClusterTKGVersionReturns("v1.2.1-rc.1", nil)
 			clusterClient.GetRegionalClusterDefaultProviderNameReturns(VSphereProviderName, nil)
 			tkgBomClient.GetDefaultTKGReleaseVersionReturns("v1.2.1-rc.1", nil)
@@ -185,6 +199,7 @@ var _ = Describe("CreateCluster", func() {
 					"kubernetes": {{Version: "v1.18.0+vmware.2"}},
 				},
 			}, nil)
+			tkgBomClient.GetBOMConfigurationFromTkrVersionReturns(tkgBomConfig, nil)
 			tkgBomClient.GetDefaultTkgBOMConfigurationReturns(&tkgconfigbom.BOMConfiguration{
 				Release: &tkgconfigbom.ReleaseInfo{Version: "v1.23"},
 			}, nil)
@@ -208,7 +223,6 @@ var _ = Describe("CreateCluster", func() {
 			})
 
 			featureFlagClient.IsConfigFeatureActivatedReturns(true, nil)
-
 			clusterClient.IsPacificRegionalClusterReturns(false, nil)
 			clusterClient.GetResourceCalls(func(c interface{}, name, namespace string, pv clusterclient.PostVerifyrFunc, opt *clusterclient.PollOptions) error {
 				cc := c.(*capi.Cluster)
@@ -232,8 +246,6 @@ var _ = Describe("CreateCluster", func() {
 				*cc = *fc
 				return nil
 			})
-			// clusterClient.GetVCServerReturns("10.0.0.1", nil)
-			// clusterClient.GetVCCredentialsFromClusterReturns("admin", "admin", nil)
 
 			_, err := tkgClient.CreateCluster(&options, false)
 			Expect(err).ToNot(HaveOccurred())

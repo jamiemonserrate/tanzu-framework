@@ -244,7 +244,7 @@ type Client interface {
 	// CloneWithTimeout returns a new client with the same attributes of the current one except for get client timeout settings
 	CloneWithTimeout(getClientTimeout time.Duration) Client
 	// GetVCClientAndDataCenter returns vsphere client and datacenter name by reading on cluster resources
-	GetVCClientAndDataCenter(clusterName, clusterNamespace, vsphereMachineTemplateObjectName string) (vc.Client, string, error)
+	GetVCClientAndDataCenter(clusterName, clusterNamespace, vsphereMachineTemplateObjectName string, vcClientFactory vc.VcClientFactory) (vc.Client, string, error)
 	// PatchK8SVersionToPacificCluster patches the Pacific TKC object to update the k8s version on the cluster
 	PatchK8SVersionToPacificCluster(clusterName, namespace string, kubernetesVersion string) error
 	// WaitForPacificClusterK8sVersionUpdate waits for the Pacific TKC cluster to update k8s version

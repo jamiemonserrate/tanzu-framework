@@ -126,9 +126,7 @@ func (c *TkgClient) CreateCluster(options *CreateClusterOptions, waitForCluster 
 		log.Infof("Using custom image repository: %s", customImageRepo)
 	}
 
-	// TODO - This is a temporary workaround to see how far we get by skipping the VC validation.
-	// The proper thing to do is introduce a new fake for the VC Client.
-	if err := c.ConfigureAndValidateWorkloadClusterConfiguration(options, regionalClusterClient, true); err != nil {
+	if err := c.ConfigureAndValidateWorkloadClusterConfiguration(options, regionalClusterClient, false); err != nil {
 		return false, errors.Wrap(err, "workload cluster configuration validation failed")
 	}
 	infraProvider, err := regionalClusterClient.GetRegionalClusterDefaultProviderName(clusterctlv1.InfrastructureProviderType)
