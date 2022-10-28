@@ -232,6 +232,8 @@ var _ = Describe("CreateCluster", func() {
 				*cc = *fc
 				return nil
 			})
+			// clusterClient.GetVCServerReturns("10.0.0.1", nil)
+			// clusterClient.GetVCCredentialsFromClusterReturns("admin", "admin", nil)
 
 			_, err := tkgClient.CreateCluster(&options, false)
 			Expect(err).ToNot(HaveOccurred())
